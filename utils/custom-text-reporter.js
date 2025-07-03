@@ -67,19 +67,23 @@ class ErrorReporter {
     }
 
     onEnd() {
-        if (this.failures.length === 0) return;
-
-        const logsDir = path.join(process.cwd(), 'logs');
-        if (!fs.existsSync(logsDir)) {
-            fs.mkdirSync(logsDir); // Create the 'logs' folder if it doesn't exist
-        }
-
-        const reportPath = path.join(logsDir, 'test-failure-report.txt');
-        const header = `Total Failed Tests: ${this.failures.length}\n\n`;
-        const content = header + this.failures.join('\n\n');
-
-        fs.writeFileSync(reportPath, content, 'utf-8');
+    const logsDir = path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir);
     }
+
+    if (this.failures.length === 0) {
+        fs.writeFileSync(path.join(logsDir, 'test-failure-report.txt'), 'Total Failed Tests: 0\n', 'utf-8');
+        return;
+    }
+
+    const reportPath = path.join(logsDir, 'test-failure-report.txt');
+    const header = `Total Failed Tests: ${this.failures.length}\n\n`;
+    const content = header + this.failures.join('\n\n');
+
+    fs.writeFileSync(reportPath, content, 'utf-8');
+}
+
 }
 
 module.exports = ErrorReporter;

@@ -1,0 +1,13 @@
+Total Failed Tests: 2
+
+fails on wrong title
+Location   : example.spec.js:26
+Method     : /Users/arunkumarvivekanandan/Desktop/Playwright/tests/example.spec.js:30:22
+Failed At  : await expect(page).toHaveTitle(/Playwright123/); - Error: Timed out 5000ms waiting for expect(page).toHaveTitle(expected)
+--------------------------------------------------
+
+fails on missing heading
+Location   : example.spec.js:33
+Method     : /Users/arunkumarvivekanandan/Desktop/Playwright/tests/example.spec.js:40:78
+Failed At  : await expect(page.getByRole('heading', { name: 'Getting Started Guide' })).toBeVisible(); - Error: Timed out 5000ms waiting for expect(locator).toBeVisible()
+--------------------------------------------------
