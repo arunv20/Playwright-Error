@@ -2,57 +2,84 @@ const fs = require('fs');
 const path = require('path');
 
 class ErrorReporter {
-  constructor() {
-    this.failures = [];
-  }
-
-  /**
-   * Utility to clean ANSI color codes from terminal messages
-   * @param {string} str
-   * @returns {string}
-   */
-  stripAnsi(str) {
-    return str.replace(
-      // Regex to remove ANSI escape sequences
-      /\x1b\[([0-9]{1,3}(;[0-9]{1,3})?)?[mGK]/g,
-      ''
-    );
-  }
-
-  onTestEnd(test, result) {
-    if (result.status !== 'failed') return;
-
-    const testTitle = test.title;
-    const location = `${test.location.file}:${test.location.line}`;
-
-    // Extract method trace from stack
-    let methodLine = 'Unknown';
-    if (result.error?.stack) {
-      const lines = result.error.stack.split('\n');
-      const relevant = lines.find(line => line.includes('at '));
-      if (relevant) methodLine = relevant.trim();
+    constructor() {
+        this.failures = [];
     }
 
-    // Clean up ANSI characters from error message
-    const rawMsg = result.error?.message || 'No error message';
-    const errorMsg = this.stripAnsi(rawMsg.split('\n')[0]);
+    stripAnsi(str) {
+        return str.replace(/\x1b\[([0-9]{1,3}(;[0-9]{1,3})?)?[mGK]/g, '');
+    }
 
-    const formatted = [
-      `❌ Test Failed: ${testTitle}`,
-      `📄 Location   : ${location}`,
-      `🔹 Method     : ${methodLine}`,
-      `📝 Error      : ${errorMsg}`,
-      '--------------------------------------------------'
-    ].join('\n');
+    extractMethodName(stack) {
+        if (!stack) return 'UnknownMethod';
+        const match = stack.split('\n').find(line => line.includes('at ') && line.includes('.js:'));
+        if (!match) return 'UnknownMethod';
+        return match.trim().split('at ')[1].split(' ')[0];
+    }
 
-    this.failures.push(formatted);
-  }
+    extractFailedCode(stack) {
+        if (!stack) return 'Unavailable';
+        const match = stack.split('\n').find(line => line.includes('.js:') && line.includes('at '));
+        if (!match) return 'Unavailable';
 
-  onEnd() {
-    const reportPath = path.join(process.cwd(), 'playwright-error-report.txt');
-    fs.writeFileSync(reportPath, this.failures.join('\n\n'), 'utf-8');
-    console.log(`📄 Error report written to: ${reportPath}`);
-  }
+        const locationMatch = match.match(/(\/.*\.js):(\d+):(\d+)/);
+        if (!locationMatch) return 'Unavailable';
+
+        const [, file, lineNum] = locationMatch;
+        try {
+            const codeLines = fs.readFileSync(file, 'utf-8').split('\n');
+            return codeLines[parseInt(lineNum, 10) - 1].trim();
+        } catch {
+            return 'Failed to read source code line';
+        }
+    }
+
+    extractTimeoutMessage(errors) {
+        if (!errors || !Array.isArray(errors)) return null;
+        const timeoutError = errors.find(e => e.message?.includes('Test timeout of'));
+        return timeoutError ? timeoutError.message : null;
+    }
+
+    onTestEnd(test, result) {
+        if (result.status !== 'failed') return;
+
+        const testTitle = test.title;
+        const filePath = test.location?.file || 'UnknownFile';
+        const lineNumber = test.location?.line || '0';
+        const location = `${path.basename(filePath)}:${lineNumber}`;
+
+        const timeoutMsg = this.extractTimeoutMessage(result.errors);
+        const rawMsg = result.error?.message || timeoutMsg || 'No error message';
+        const errorMsg = this.stripAnsi(rawMsg.split('\n')[0]);
+
+        const methodName = this.extractMethodName(result.error?.stack);
+        const failedCode = this.extractFailedCode(result.error?.stack);
+
+        const formatted = [
+            `${testTitle}`,
+            `Location   : ${location}`,
+            `Method     : ${methodName}`,
+            `Failed At  : ${failedCode} - ${errorMsg}`,
+            '--------------------------------------------------'
+        ].join('\n');
+
+        this.failures.push(formatted);
+    }
+
+    onEnd() {
+        if (this.failures.length === 0) return;
+
+        const logsDir = path.join(process.cwd(), 'logs');
+        if (!fs.existsSync(logsDir)) {
+            fs.mkdirSync(logsDir); // Create the 'logs' folder if it doesn't exist
+        }
+
+        const reportPath = path.join(logsDir, 'test-failure-report.txt');
+        const header = `Total Failed Tests: ${this.failures.length}\n\n`;
+        const content = header + this.failures.join('\n\n');
+
+        fs.writeFileSync(reportPath, content, 'utf-8');
+    }
 }
 
 module.exports = ErrorReporter;
